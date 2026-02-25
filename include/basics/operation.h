@@ -67,5 +67,5 @@ private:
     // TimePoint possible_start_ =
     //     START_TIME_POINT;  // момент возможного старта операции
 
-    friend class Operation;
+    // friend class Operation;
 };

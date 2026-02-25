@@ -7,8 +7,8 @@
 #include "solvers/sorters.h"
 #include "utils/generator.h"
 
-constexpr size_t kCntTools = 100;
-constexpr size_t kCntIntervals = 50;
+constexpr size_t kCntTools = 10;
+constexpr size_t kCntIntervals = 20;
 constexpr std::pair<int, int> kSpacerDur = {100, 150};
 constexpr std::pair<int, int> kIntervalDur = {1000, 2000};
 constexpr double kOpGenProb = 0.5;

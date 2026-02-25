@@ -10,9 +10,18 @@ add_executable(concurent_grid ${CMAKE_SOURCE_DIR}/samples/concurent_grid.cpp)
 target_link_libraries(concurent_grid ${PROJECT_NAME}LIB)
 target_include_directories(concurent_grid PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
-add_executable(statistic_calculation ${CMAKE_SOURCE_DIR}/samples/statistic_calculation.cpp)
-target_link_libraries(statistic_calculation ${PROJECT_NAME}LIB)
-target_include_directories(statistic_calculation PRIVATE ${CMAKE_SOURCE_DIR}/include)
+find_package(Threads REQUIRED)
+
+# Sample 1: statistic_calculation
+add_executable(statistic_calculation statistic_calculation.cpp)
+target_link_libraries(statistic_calculation 
+    PRIVATE 
+        ${PROJECT_NAME}LIB
+        Threads::Threads
+)
+# add_executable(statistic_calculation ${CMAKE_SOURCE_DIR}/samples/statistic_calculation.cpp)
+# target_link_libraries(statistic_calculation ${PROJECT_NAME}LIB)
+# target_include_directories(statistic_calculation PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
 add_executable(multistep ${CMAKE_SOURCE_DIR}/samples/multistep.cpp)
 target_link_libraries(multistep ${PROJECT_NAME}LIB)
