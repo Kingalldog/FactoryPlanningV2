@@ -135,11 +135,23 @@ class ModelTrainer:
     def predict_best_heuristic(self, problem_filepath):
         """Предсказывает лучшую эвристику для новой задачи"""
         if self.model is None:
-            raise ValueError("Модель не обучена! Сначала вызовите train().")
+            # raise ValueError("Модель не обучена! Сначала вызовите train().")
+            return {
+                'best': 'Dummy',
+                'probabilities': [('Dummy', 1.0)],
+                'confidence': 1.0,
+                'error': 'model not trained'
+            }
         
         features = self.extractor.extract_from_file(problem_filepath)
         if features is None:
-            raise ValueError(f"Не удалось извлечь признаки из файла: {problem_filepath}")
+            # raise ValueError(f"Не удалось извлечь признаки из файла: {problem_filepath}")
+            return {
+                'best': 'Dummy',
+                'probabilities': [('Dummy', 1.0)],
+                'confidence': 1.0,
+                'error': 'Feature extraction failed'
+            }
         
         features_df = pd.DataFrame([features])
         features_df = features_df.reindex(columns=self.feature_names, fill_value=0)

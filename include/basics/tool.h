@@ -16,7 +16,9 @@ public:
     void RemOpFromWorkProceess(size_t op_idx);
     const std::set<TimeInterval>& GetShedule() const;
     const std::set<NamedTimeInterval>& GetWorkProcess() const;
-
+    const std::set<TimeInterval> shedule();
+    void removeTimeInterval(TimeInterval timeInterval);
+    void addTimeInterval(TimeInterval timeInterval);
 private:
     std::set<TimeInterval> shedule_;
     std::set<NamedTimeInterval> work_process_;

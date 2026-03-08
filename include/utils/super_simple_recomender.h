@@ -9,15 +9,21 @@
 
 namespace {
 
+const std::string PYTHON_SCRIPT = "../../model/heuristic_recommender.py";
+
 std::vector<std::string> parseSpaceSeparated(const std::string& input) {
     std::vector<std::string> result;
-    std::stringstream ss(input);
-    std::string token;
     
-    while (ss >> token) {  // >> автоматически разделяет по пробелам
-        result.push_back(token);
+    std::string name = "";
+    for(auto e : input) {
+        if (e == ' ') {
+            result.push_back(name);
+            name.clear();
+        } else {
+            name.push_back(e);
+        }
     }
-    
+
     return result;
 }
 
@@ -44,7 +50,7 @@ public:
     SimpleRecommender(const std::string& path) : model_path(path) {}
     
     std::vector<std::string> getTopAlgoritmth(const std::string& problem, int count = 3) {
-        std::string cmd = std::string("python3 ../model/heuristic_recommender.py --mode names_only ") +
+        std::string cmd = std::string("python3 " + PYTHON_SCRIPT + " --mode names_only ") +
                           "--model \"" + model_path + "\" " +
                           "--problem \"" + problem + "\" --top_n " + std::to_string(count);
         
@@ -53,7 +59,7 @@ public:
         if (!output.empty() && output.back() == '\n') {
             output.pop_back();
         }
-        
+
         return parseSpaceSeparated(output);
     }
 };

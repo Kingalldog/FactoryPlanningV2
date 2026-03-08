@@ -105,3 +105,20 @@ void Tool::RemOpFromWorkProceess(size_t op_idx) {
         }
     }
 }
+
+const std::set<TimeInterval> Tool::shedule()
+{
+    return shedule_;
+}
+
+void Tool::removeTimeInterval(TimeInterval timeInterval)
+{
+    if (shedule_.find(timeInterval) != shedule_.end()) {
+        shedule_.erase(timeInterval);
+    }
+}
+
+void Tool::addTimeInterval(TimeInterval timeInterval)
+{
+    shedule_.insert(timeInterval);
+}

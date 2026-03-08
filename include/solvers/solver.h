@@ -5,6 +5,7 @@
 #include "defines.h"
 #include "solvers/sorters.h"
 #include "utils/count_set.h"
+#include "problemHandler.h"
 
 using TimePointsQueue = std::set<TimePoint>;
 
@@ -12,6 +13,7 @@ class Solver {
 public:
     template <CanSort Sorter>
     static void Solve(ProblemData& data, int seed = 185643241) {
+        ProblemHandler problemHandler(data);
         RandomGenerator gena(seed);
         Sorter sorter;
         TimePoint current_time;
@@ -28,13 +30,13 @@ public:
                 FindPossibleTools(front, data, current_time);
             std::shuffle(front.begin(), front.end(), gena.GetGen());
             gena.GetGen().seed(gena.GetGen()());
-            sorter.SortFront(data, front, possible_tools);
+            sorter.SortFront(problemHandler.data(), front, possible_tools);
 
             // назначение
             // вот здесь надо не первый попавшийся инструмент использовать
             // а для каждой операции в текущем фронте искать самый оптимальный
             AppointmentProcess(front, pre_front, possible_tools, current_time,
-                               data, timestamps);
+                               data, timestamps, problemHandler);
         }
     }
 
@@ -60,6 +62,7 @@ protected:
                                    CountSet<size_t>& pre_front,
                                    IdsSet& possible_tools,
                                    TimePoint current_time, ProblemData& data,
-                                   TimePointsQueue& timestamps);
+                                   TimePointsQueue& timestamps,
+                                   ProblemHandler& problemHandler);
     RandomGenerator gena_;
 };

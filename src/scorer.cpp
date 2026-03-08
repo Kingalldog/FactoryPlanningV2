@@ -5,6 +5,27 @@
 #include "basics/work.h"
 #include "defines.h"
 
+#include <iostream>
+
+namespace {
+
+double calculatePenalty(double seconds, double fineCoef) {
+    const double SECONDS_IN_DAY = 86400.0;
+    const double DAYS_SCALE = 30.0; // масштаб для логарифма
+    const double BASE_PENALTY = 100.0; // базовый штраф
+    
+    double days = seconds / SECONDS_IN_DAY;
+    if (days <= 0) return 0;
+    
+    // Логарифмический рост: ln(1 + days/DAYS_SCALE)
+    // С каждым днём прирост замедляется
+    double penalty = BASE_PENALTY * log(1 + days / DAYS_SCALE);
+    
+    return penalty * fineCoef;
+}
+
+} // namespace
+
 std::pair<std::vector<WorkPtr>, std::vector<WorkPtr>> SeparateWorks(
     const ProblemData& data) {
     std::vector<WorkPtr> fully_appointed;
@@ -53,11 +74,18 @@ Score BasicScorer::CalcScore(const ProblemData& data,
             end_time =
                 std::max(data.operations[id].GetStEndTimes().second, end_time);
         }
+        // std::cout << std::chrono::duration<double>(
+        //         std::max(end_time - work->Directive(), Duration(0)))
+        //         .count() << std::endl;
+        // score.appointed_fine +=
+        //     work->FineCoef() *
+        //     std::chrono::duration<double>(
+        //         std::max(end_time - work->Directive(), Duration(0)))
+        //         .count();
         score.appointed_fine +=
-            work->FineCoef() *
-            std::chrono::duration<double>(
-                std::max(end_time - work->Directive(), Duration(0)))
-                .count();
+            calculatePenalty(
+                std::chrono::duration<double>(std::max(end_time - work->Directive(), Duration(0))).count(),
+                work->FineCoef());
     }
 
     score.not_appointed_fine =

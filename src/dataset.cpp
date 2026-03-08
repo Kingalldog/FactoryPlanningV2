@@ -14,8 +14,8 @@
 #include "utils/printer.h"
 constexpr std::array<int, 6> kSeeds{5465634, 465677, 465677,
                                     5613244, 68123,  2349008};
-constexpr std::array<size_t, 3> kToolsCnts{70};
-constexpr std::array<size_t, 3> kIntervalsCnts{20, 50, 70};
+constexpr std::array<size_t, 3> kToolsCnts{25, 47, 18};
+constexpr std::array<size_t, 3> kIntervalsCnts{12, 34, 23};
 constexpr std::array<double, 3> kOpCreateProbs{0.45, 0.69};
 constexpr std::array<double, 3> kEdCreateProbs{0.45, 0.69};
 constexpr std::array<double, 3> kToolAddiProbs{0.45, 0.69};

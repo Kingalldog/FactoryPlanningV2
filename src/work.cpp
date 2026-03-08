@@ -18,3 +18,10 @@ bool Work::AddOperation(size_t id) { return operation_ids_.insert(id).second; }
 bool Work::DelOperation(size_t id) { return operation_ids_.erase(id) != 0U; }
 
 const IdsSet& Work::OperationIDs() const { return operation_ids_; }
+
+void Work::removeOperations(size_t id)
+{
+    if (operation_ids_.find(id) != operation_ids_.end()) {
+      operation_ids_.erase(id);
+    }
+}

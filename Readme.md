@@ -1,4 +1,6 @@
 # Скачать архив с GitHub
+mkdir third_party
+cd third_party
 wget https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz
 
 # Распаковать архив

@@ -68,4 +68,4 @@ def create_gantt_express(json_file_path):
     
     fig.show()
 
-create_gantt_express("solution3.json")
+create_gantt_express("../build/samples/solution_robin.json")

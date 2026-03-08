@@ -156,7 +156,7 @@ void Printer::PrintAnswerJSON(const ProblemData& data, Score score,
          {"not_appointed_fine", score.not_appointed_fine}});
 
     for (size_t i = 0; i < data.tools.size(); ++i) {
-        answer["tools"].push_back({ToolToJson(data.tools[i], data, i)});
+        answer["tools"].push_back(ToolToJson(data.tools[i], data, i));
     }
 
     for (const auto& oper : data.operations) {

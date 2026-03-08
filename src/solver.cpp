@@ -51,7 +51,8 @@ void Solver::AppointmentProcess(const IdsVec& front,
                                 CountSet<size_t>& pre_front,
                                 IdsSet& possible_tools, TimePoint current_time,
                                 ProblemData& data,
-                                TimePointsQueue& timestamps) {
+                                TimePointsQueue& timestamps,
+                                ProblemHandler& problemHandler) {
     for (size_t oper : front) {
         auto& operation = data.operations[oper];
         if (!operation.CanBeAppointed(current_time)) {
@@ -80,6 +81,8 @@ void Solver::AppointmentProcess(const IdsVec& front,
             for (size_t id : operation.Depended()) {
                 pre_front.Insert(id);
             }
+
+            problemHandler.AppointmentProcess(best_tool_id, operation);
         }
     }
 }

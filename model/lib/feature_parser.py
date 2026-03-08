@@ -21,124 +21,131 @@ class ProblemFeatureExtractor:
             print(f"Файл не найден: {filepath}")
             return None
         
-        lines = content.strip().split('\n')
-        i = 0
-        data = {}
-        
-        # Парсим TOOLS
-        while i < len(lines) and 'TOOLS' not in lines[i]:
-            i += 1
-        if i >= len(lines):
-            return None
-        i += 1
-        n_tools = int(lines[i])
-        i += 1
-        
-        # Собираем информацию о занятости инструментов
-        tool_intervals = []
-        for tool_idx in range(n_tools):
-            line = lines[i].strip()
-            intervals = []
-            if line.startswith('i'):
-                parts = line.split('(')[1:]
-                for part in parts:
-                    if ')' in part:
-                        times = part.split(')')[0].split()
-                        if len(times) == 2:
-                            start = self.parse_time(times[0])
-                            end = self.parse_time(times[1])
-                            intervals.append((start, end))
-            tool_intervals.append(intervals)
-            i += 1
-        
-        data['n_tools'] = n_tools
-        data['tool_intervals'] = tool_intervals
-        
-        # Парсим OPERATIONS
-        while i < len(lines) and 'OPERATIONS' not in lines[i]:
-            i += 1
-        if i >= len(lines):
-            return None
-        i += 1
-        n_operations = int(lines[i])
-        i += 1
-        
-        stoppable = list(map(int, lines[i].split()))
-        data['n_operations'] = n_operations
-        data['stoppable_ratio'] = sum(stoppable) / n_operations if n_operations > 0 else 0
-        i += 1
-        
-        # Парсим TIMES
-        while i < len(lines) and 'TIMES' not in lines[i]:
-            i += 1
-        if i >= len(lines):
-            return None
-        i += 1
-        
-        times_matrix = []
-        for op_idx in range(n_operations):
-            row = []
-            times_str = lines[i].strip().split()
-            for t in times_str:
-                # Парсим "0_00:05:38"
-                days_str, time_str = t.split('_')
-                h, m, s = map(int, time_str.split(':'))
-                total_seconds = int(days_str) * 86400 + h * 3600 + m * 60 + s
-                row.append(total_seconds)
-            times_matrix.append(row)
-            i += 1
-        
-        data['times_matrix'] = times_matrix
-        
-        # Парсим works
-        works_data = []
-        while i < len(lines):
-            if lines[i].strip() == 'work':
+        try:
+            lines = content.strip().split('\n')
+            i = 0
+            data = {}
+            
+            # Парсим TOOLS
+            while i < len(lines) and 'TOOLS' not in lines[i]:
                 i += 1
-                if i >= len(lines):
-                    break
-                work_header = lines[i].strip().split()
-                if len(work_header) < 6:
-                    break
-                start_time = self.parse_time(work_header[0])
-                directive = self.parse_time(work_header[1])
-                fine_coef = float(work_header[2])
-                work_id = int(work_header[3])
-                cnt_edges = int(work_header[4])
-                size = int(work_header[5])
+            if i >= len(lines):
+                return None
+            i += 1
+            n_tools = int(lines[i])
+            i += 1
+            
+            # Собираем информацию о занятости инструментов
+            tool_intervals = []
+            for tool_idx in range(n_tools):
+                line = lines[i].strip()
+                intervals = []
+                if line.startswith('i'):
+                    parts = line.split('(')[1:]
+                    for part in parts:
+                        if ')' in part:
+                            times = part.split(')')[0].split()
+                            if len(times) == 2:
+                                start = self.parse_time(times[0])
+                                end = self.parse_time(times[1])
+                                intervals.append((start, end))
+                tool_intervals.append(intervals)
                 i += 1
-                
-                if i >= len(lines):
-                    break
-                op_ids = list(map(int, lines[i].strip().split()))
+            
+            data['n_tools'] = n_tools
+            data['tool_intervals'] = tool_intervals
+            
+            # Парсим OPERATIONS
+            while i < len(lines) and 'OPERATIONS' not in lines[i]:
                 i += 1
-                
-                dependencies = []
-                for _ in range(cnt_edges):
+            if i >= len(lines):
+                return None
+            i += 1
+            n_operations = int(lines[i])
+            i += 1
+            
+            stoppable = list(map(int, lines[i].split()))
+            data['n_operations'] = n_operations
+            data['stoppable_ratio'] = sum(stoppable) / n_operations if n_operations > 0 else 0
+            i += 1
+            
+            # Парсим TIMES
+            while i < len(lines) and 'TIMES' not in lines[i]:
+                i += 1
+            if i >= len(lines):
+                return None
+            i += 1
+            
+            times_matrix = []
+            for op_idx in range(n_operations):
+                # if i >= len(lines):
+                #     row = [0] * n_machines  # или другое значение по умолчанию
+                #     times_matrix.append(row)
+                #     continue
+                row = []
+                times_str = lines[i].strip().split()
+                for t in times_str:
+                    # Парсим "0_00:05:38"
+                    days_str, time_str = t.split('_')
+                    h, m, s = map(int, time_str.split(':'))
+                    total_seconds = int(days_str) * 86400 + h * 3600 + m * 60 + s
+                    row.append(total_seconds)
+                times_matrix.append(row)
+                i += 1
+            
+            data['times_matrix'] = times_matrix
+            
+            # Парсим works
+            works_data = []
+            while i < len(lines):
+                if lines[i].strip() == 'work':
+                    i += 1
                     if i >= len(lines):
                         break
-                    dep = tuple(map(int, lines[i].strip().split()))
-                    dependencies.append(dep)
+                    work_header = lines[i].strip().split()
+                    if len(work_header) < 6:
+                        break
+                    start_time = self.parse_time(work_header[0])
+                    directive = self.parse_time(work_header[1])
+                    fine_coef = float(work_header[2])
+                    work_id = int(work_header[3])
+                    cnt_edges = int(work_header[4])
+                    size = int(work_header[5])
                     i += 1
-                
-                works_data.append({
-                    'id': work_id,
-                    'start': start_time,
-                    'directive': directive,
-                    'fine_coef': fine_coef,
-                    'op_ids': op_ids,
-                    'dependencies': dependencies,
-                    'duration': directive - start_time
-                })
-            else:
-                i += 1
-        
-        data['works'] = works_data
-        data['n_works'] = len(works_data)
-        
-        # Вычисляем признаки
-        features = self.compute_features(data)
-        return features
+                    
+                    if i >= len(lines):
+                        break
+                    op_ids = list(map(int, lines[i].strip().split()))
+                    i += 1
+                    
+                    dependencies = []
+                    for _ in range(cnt_edges):
+                        if i >= len(lines):
+                            break
+                        dep = tuple(map(int, lines[i].strip().split()))
+                        dependencies.append(dep)
+                        i += 1
+                    
+                    works_data.append({
+                        'id': work_id,
+                        'start': start_time,
+                        'directive': directive,
+                        'fine_coef': fine_coef,
+                        'op_ids': op_ids,
+                        'dependencies': dependencies,
+                        'duration': directive - start_time
+                    })
+                else:
+                    i += 1
+            
+            data['works'] = works_data
+            data['n_works'] = len(works_data)
+            
+            # Вычисляем признаки
+            features = self.compute_features(data)
+            return features
+        except Exception as e:
+            return {}
     
     def compute_features(self, data):
         """Вычисляет признаки на основе распарсенных данных"""

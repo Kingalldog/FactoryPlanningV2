@@ -19,6 +19,8 @@ public:
 
     bool AddOperation(size_t id);
 
+    void removeOperations(size_t id);
+
 private:
     bool DelOperation(size_t id);
     TimePoint start_time_;
