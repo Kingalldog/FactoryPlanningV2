@@ -23,6 +23,17 @@ public:
         data_.times_matrix = data.times_matrix;
         data_.operations = data.operations;
     }
+    ProblemHandler(const ProblemHandler& other) {
+        data_.tools = other.data_.tools;
+        
+        data_.works.clear();
+        for (const auto& work : other.data_.works) {
+            data_.works.push_back(std::make_shared<Work>(*work));
+        }
+        
+        data_.times_matrix = other.data_.times_matrix;
+        data_.operations = other.data_.operations;
+    }
     ProblemData data();
     void setData(ProblemData data);
     void AppointmentProcess(

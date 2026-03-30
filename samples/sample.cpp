@@ -24,8 +24,8 @@ template <CanSort Sorter>
 void Pipeline(const ProblemData& generated_data, std::string out_filename) {
     std::ofstream out_file(out_filename);
     ProblemData data_copy = generated_data;
-
-    Solver::Solve<Sorter>(data_copy, kSolverSeed);
+    ProblemDataAndFront problemDataAndFront(data_copy);
+    Solver::Solve<Sorter>(problemDataAndFront, kSolverSeed);
     SolutionChecker::Check(data_copy);
 
     Score score = BasicScorer::CalcScore(data_copy, kScoreMult);

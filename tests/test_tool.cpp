@@ -37,7 +37,8 @@ TEST_CASE("Tool deleting operation") {
 
     ProblemData data(genadiy.Generate(params));
     CHECK(!CheckToolDoThisOperation(data.tools[0], 213));
-    Solver::Solve<DummySorter>(data, 13212423);
+    ProblemDataAndFront problemDataAndFront(data);
+    Solver::Solve<DummySorter>(problemDataAndFront, 13212423);
 
     for (auto& tool : data.tools) {
         IdsSet ids = GetWhatToolDo(tool);

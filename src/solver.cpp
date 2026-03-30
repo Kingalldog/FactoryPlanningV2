@@ -3,6 +3,8 @@
 #include "defines.h"
 #include "utils/count_set.h"
 
+#include <iostream>
+
 TimePointsQueue Solver::GetStartTimes(const ProblemData& data) {
     TimePointsQueue times_set;
     for (const auto& work : data.works) {
@@ -53,6 +55,7 @@ void Solver::AppointmentProcess(const IdsVec& front,
                                 ProblemData& data,
                                 TimePointsQueue& timestamps,
                                 ProblemHandler& problemHandler) {
+    std::set<size_t> removedPreforntIndex;
     for (size_t oper : front) {
         auto& operation = data.operations[oper];
         if (!operation.CanBeAppointed(current_time)) {
@@ -77,12 +80,23 @@ void Solver::AppointmentProcess(const IdsVec& front,
                 data.operations);
             timestamps.insert(operation.GetStEndTimes().second);
             possible_tools.erase(best_tool_id);
-            pre_front.EraseOne(oper);
+            // if (oper == 0) {
+            //     std::cout << "DELETENG 0" << std::endl << std::endl;
+            // }
+            // if (operation.ID() == 0) {
+            //     std::cout << "DELETENG 0 vvvv" << std::endl << std::endl;
+            // }
+            pre_front.EraseOne(operation.ID());
+            // if (operation.ID() == 0) {
+            //     std::cout << pre_front.Count(0) << std::endl << std::endl;
+            // }
             for (size_t id : operation.Depended()) {
                 pre_front.Insert(id);
             }
 
+            removedPreforntIndex.insert(oper);
             problemHandler.AppointmentProcess(best_tool_id, operation);
         }
     }
+    
 }

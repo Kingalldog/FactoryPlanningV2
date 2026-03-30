@@ -13,6 +13,7 @@
 #include "solvers/solution_checker.h"
 #include "solvers/ml_sorter.h"
 #include "solvers/solver.h"
+#include "solvers/problem_data_and_front.h"
 #include "solvers/sorters.h"
 #include "utils/concurent_grid.h"
 #include "utils/dataset.h"
@@ -24,14 +25,38 @@ constexpr int kSolverSeedThird = 235392578;
 constexpr double kScoreMult = 100;
 const int countThreds = 10;
 
-const std::string folderName = "model_data";
+namespace {
+
+const std::string folderPath = "../../../factory/dataset_directory_big/";
+const std::string mlRemainsPath = "../../../factory/dataset_directory_big/ml_remains/";
+const std::string folderName = "for_ml_traning";
+
+void savedData(const std::string& name, ProblemDataAndFront& dataAndFront) {
+    std::ofstream out(mlRemainsPath + name, std::ios::app);
+    if (!out.is_open()) {
+        throw std::runtime_error("Cannot open file for writing: " + std::string(mlRemainsPath + name));
+    }
+    
+    out << dataAndFront;
+    // dataAndFront.Print(out);
+    // Printer::PrintProblemData(dataAndFront.data(), out);
+    out.close();
+}
+
+struct TaskData {
+    std::string name;
+    std::string algoname;
+    double fine;
+};
+} // namespace
 
 template <CanSort Sorter>
 double Pipeline(const ProblemData& data) {
     ProblemData data_copy = data;
-    Solver::Solve<Sorter>(data_copy, kSolverSeedFirst);
+    ProblemDataAndFront problemDataAndFront(data);
+    Solver::Solve<Sorter>(problemDataAndFront, kSolverSeedFirst);
     SolutionChecker::Check(data_copy);
-    Score score_1 = BasicScorer::CalcScore(data_copy, kScoreMult);
+    Score score_1 = BasicScorer::CalcScore(problemDataAndFront.data(), kScoreMult);
 
     // data_copy = data;
     // Solver::Solve<Sorter>(data_copy, kSolverSeedSecond);
@@ -48,25 +73,81 @@ double Pipeline(const ProblemData& data) {
     return score_1.appointed_fine;
 }
 
-// double PipelineWithMl(const ProblemData& data) {
-//     ProblemData data_copy = data;
-//     MlSolver::Solve(data_copy, kSolverSeedFirst);
-//     SolutionChecker::Check(data_copy);
-//     Score score_1 = BasicScorer::CalcScore(data_copy, kScoreMult);
+template <CanSort Sorter>
+TaskData oneRunning(
+    ProblemDataAndFront dataProblemAndFontCopy,
+    const std::string& name,
+    const std::string algoName)
+{
+    Solver::Solve<Sorter>(dataProblemAndFontCopy, kSolverSeedFirst, true);
+    // solve all with dummy sorting
+    Solver::Solve<DummySorter>(dataProblemAndFontCopy, kSolverSeedFirst);
+    SolutionChecker::Check(dataProblemAndFontCopy.data());
+    Score score_1 = BasicScorer::CalcScore(dataProblemAndFontCopy.data(), kScoreMult);
 
-//     data_copy = data;
-//     MlSolver::Solve(data_copy, kSolverSeedSecond);
-//     SolutionChecker::Check(data_copy);
-//     Score score_2 = BasicScorer::CalcScore(data_copy, kScoreMult);
+    return {
+        .name = name,
+        .algoname = algoName,
+        .fine = score_1.appointed_fine
+    };
+}
 
-//     data_copy = data;
-//     MlSolver::Solve(data_copy, kSolverSeedThird);
-//     SolutionChecker::Check(data_copy);
-//     Score score_3 = BasicScorer::CalcScore(data_copy, kScoreMult);
-//     return (score_1.appointed_fine + score_2.appointed_fine +
-//             score_3.appointed_fine) /
-//            3;
-// }
+
+void PipelineForMl(
+    const ProblemData& data,
+    ConcurentGrid<double>& table,
+    const std::string& name)
+{
+    ProblemDataAndFront problemDataAndFront(data);
+    auto operationType = MlDatasetCreationType::Working;
+    int iteration = 0;
+    while (operationType == MlDatasetCreationType::Working) {
+        if (iteration > 10) {
+            return;
+        }
+        auto savedName = name.substr(folderPath.length() + folderName.length(), name.length()) +"_itaration_" + std::to_string(iteration);
+        savedData(savedName, problemDataAndFront);
+
+        std::vector<TaskData> taskDatas;
+        
+        // taskDatas.push_back(
+        //     oneRunning<DummySorter>(problemDataAndFront, savedName, "Dummy")
+        // );
+        taskDatas.push_back(
+            oneRunning<DummySorter>(problemDataAndFront, savedName, "Dummy")
+        );
+        taskDatas.push_back(
+            oneRunning<DirectiveTimeSorter>(problemDataAndFront, savedName, "Directive")
+        );
+        taskDatas.push_back(
+            oneRunning<StoppableSorter>(problemDataAndFront, savedName, "Stoppable")
+        );
+        taskDatas.push_back(
+            oneRunning<RoundRobinSorter>(problemDataAndFront, savedName, "Robin")
+        );
+        taskDatas.push_back(
+            oneRunning<FineSorter>(problemDataAndFront, savedName, "FineSorter")
+        );
+        taskDatas.push_back(
+            oneRunning<DependedSorter>(problemDataAndFront, savedName, "Dependent")
+        );
+        
+        // solve all with dummy sorting
+        std::set<double> fines;
+        for(const auto& taskData : taskDatas) {
+            fines.insert(taskData.fine);
+        }
+        // if (fines.size() < 4 || iteration > 10) {
+        //     return;
+        // }
+        for(const auto& taskData : taskDatas) {
+            table.Set(taskData.name, taskData.algoname, taskData.fine);
+        }
+
+        operationType = Solver::Solve<DummySorter>(problemDataAndFront, kSolverSeedFirst, true);
+        ++iteration;
+    }
+}
 
 template <CanSort Sorter, size_t depth, size_t beam_size>
 double PipelineForMultistep(const ProblemData& data) {
@@ -81,8 +162,8 @@ double PipelineForMultistep(const ProblemData& data) {
 int main() {
     std::vector<std::string> row_names;
     std::vector<std::string> col_names{
-        "Dummy",          "Directive",     "Stoppable",      "Robin",
-        "FineSorter",     "Dependent",     /*"MlSorter", "MlHardSorter","MDummy6_2",      "MDirective6_2",
+        "Dummy",         "Directive",     "Stoppable",      "Robin",
+        "FineSorter",     "Dependent"/*,"MlSorter", "MlHardSorter","MDummy6_2",      "MDirective6_2",
         "MStoppable6_2",  "MRobin6_2",     "MFineSorter6_2", "MDependent6_2",
         "MDummy3_4",      "MDirective3_4", "MStoppable3_4",  "MRobin3_4",
         "MFineSorter3_4", "MDependent3_4", "MDummy2_8",      "MDirective2_8",
@@ -103,18 +184,27 @@ int main() {
                     std::cout << "solving " << name.value_or("") << std::endl;
                     if (name.has_value()) {
                         auto start = std::chrono::system_clock::now();
-                        table.Set(name.value(), "Dummy",
-                                Pipeline<DummySorter>(data));
-                        table.Set(name.value(), "Directive",
-                                Pipeline<DirectiveTimeSorter>(data));
-                        table.Set(name.value(), "Stoppable",
-                                Pipeline<StoppableSorter>(data));
-                        table.Set(name.value(), "Robin",
-                                Pipeline<RoundRobinSorter>(data));
-                        table.Set(name.value(), "FineSorter",
-                                Pipeline<FineSorter>(data));
-                        table.Set(name.value(), "Dependent",
-                                Pipeline<DependedSorter>(data));
+                        // table.Set(name.value(), "Dummy",
+                        //         Pipeline<DummySorter>(data));
+                        PipelineForMl(data, table, name.value());
+                        // PipelineForMl<DummySorter>(data, table, name.value(), "Dummy");
+                        // PipelineForMl<DirectiveTimeSorter>(data, table, name.value(), "Directive");
+                        // PipelineForMl<StoppableSorter>(data, table, name.value(), "Stoppable");
+                        // PipelineForMl<RoundRobinSorter>(data, table, name.value(), "Robin");
+                        // PipelineForMl<FineSorter>(data, table, name.value(), "FineSorter");
+                        // PipelineForMl<DependedSorter>(data, table, name.value(), "Dependent");
+                        // table.Set(name.value(), "Dummy",
+                        //         Pipeline<DummySorter>(data));
+                        // table.Set(name.value(), "Directive",
+                        //         Pipeline<DirectiveTimeSorter>(data));
+                        // table.Set(name.value(), "Stoppable",
+                        //         Pipeline<StoppableSorter>(data));
+                        // table.Set(name.value(), "Robin",
+                        //         Pipeline<RoundRobinSorter>(data));
+                        // table.Set(name.value(), "FineSorter",
+                        //         Pipeline<FineSorter>(data));
+                        // table.Set(name.value(), "Dependent",
+                        //         Pipeline<DependedSorter>(data));
                         // table.Set(name.value(), "MlSorter",
                         //         Pipeline<MlSorter>(data));
                         // table.Set(name.value(), "MlHardSorter",

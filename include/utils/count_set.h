@@ -104,10 +104,11 @@ public:
     bool EraseOne(const T& value) {
         auto it = data_.find(value);
         if (it != data_.end() && it->second > 0) {
-            it->second--;
-            if (it->second == 0) {
-                data_.erase(it);
-            }
+            // it->second--;
+            // if (it->second == 0) {
+            //     data_.erase(it);
+            // }
+            data_.erase(it);
             return true;
         }
         return false;
@@ -116,6 +117,10 @@ public:
     size_t Count(const T& value) const {
         auto it = data_.find(value);
         return it != data_.end() ? it->second : 0;
+    }
+
+    size_t size() {
+        return data_.size();
     }
 
     Iterator begin() const { return Iterator(data_.begin()); }

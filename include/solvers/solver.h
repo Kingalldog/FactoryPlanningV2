@@ -1,26 +1,41 @@
 #pragma once
 #include <algorithm>
+#include <iostream>
 
 #include "basics/operation.h"
 #include "defines.h"
 #include "solvers/sorters.h"
 #include "utils/count_set.h"
 #include "problemHandler.h"
+#include "utils/printer.h"
+#include "problem_data_and_front.h"
 
-using TimePointsQueue = std::set<TimePoint>;
+namespace {
+
+const int savedIteration = 100;
+
+} // namespace
 
 class Solver {
 public:
     template <CanSort Sorter>
-    static void Solve(ProblemData& data, int seed = 185643241) {
-        ProblemHandler problemHandler(data);
+    static MlDatasetCreationType Solve(
+        ProblemDataAndFront& dataAndFront,
+        int seed = 185643241,
+        bool hardMlTraning = false) {
         RandomGenerator gena(seed);
+
+        auto& data = dataAndFront.data();
+        CountSet<size_t>& pre_front = dataAndFront.preFront();
+        auto& problemHandler = dataAndFront.problemHandler();
+
         Sorter sorter;
-        TimePoint current_time;
-        TimePointsQueue timestamps(GetStartTimes(data));
 
-        CountSet<size_t> pre_front(CalcPreFront(data));
+        auto& current_time = dataAndFront.currentTime();
+        auto& timestamps = dataAndFront.timestamps();
 
+       
+        int countIterayions = 0;
         while (!timestamps.empty()) {
             current_time = *timestamps.begin();
             timestamps.erase(current_time);
@@ -31,13 +46,20 @@ public:
             std::shuffle(front.begin(), front.end(), gena.GetGen());
             gena.GetGen().seed(gena.GetGen()());
             sorter.SortFront(problemHandler.data(), front, possible_tools);
-
             // назначение
             // вот здесь надо не первый попавшийся инструмент использовать
             // а для каждой операции в текущем фронте искать самый оптимальный
             AppointmentProcess(front, pre_front, possible_tools, current_time,
                                data, timestamps, problemHandler);
+            
+            // only for preparing data fo dynamic ml model
+            countIterayions++;
+            if (hardMlTraning && countIterayions == savedIteration) {
+                return MlDatasetCreationType::Working;
+            }
         }
+
+        return MlDatasetCreationType::Finished;
     }
 
 protected:

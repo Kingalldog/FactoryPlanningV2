@@ -18,6 +18,7 @@ const std::string FINE_SORTER = "FineSorter";
 const std::string DEPEND_SORTER = "Dependent";
 
 const std::string MODEL_PATH = "../../model/heuristic_model.pkl";
+const std::string DYNAMIC_MODEL_PATH = "../../model/dynamic_model.pkl";
 const std::string DATA_PATH = "tmp.txt";
 
 using SorterVariant = std::variant<
@@ -55,7 +56,7 @@ SorterVariant toSorter(const std::string& sorter)
     throw std::runtime_error("Unknown sorter type");
 }
 
-SorterVariant getBestSorter(const ProblemData& data, int cnt = 0)
+SorterVariant getBestSorter(const ProblemData& data,  IdsVec& front, bool isDynamicModel = false)
 {
     static std::mutex fileMutex;
     
@@ -70,16 +71,24 @@ SorterVariant getBestSorter(const ProblemData& data, int cnt = 0)
                 throw std::runtime_error("Cannot open file for writing: " + std::string(DATA_PATH));
             }
             
+            if (isDynamicModel) {
+                out << "PREFRONT\n" << front.size() << std::endl;
+                for (auto e : front) {
+                    out << e << " ";
+                }
+                out << std::endl;
+            }
             Printer::PrintProblemData(data, out);
+            out.close();
             // out закроется автоматически здесь
         } // Мьютекс освобождается после записи
         
         // Читаем из файла без блокировки (если другие потоки не пишут одновременно)
-        SimpleRecommender recomender(MODEL_PATH);
+        SimpleRecommender recomender(isDynamicModel ? DYNAMIC_MODEL_PATH : MODEL_PATH);
 
-        auto recommendedAlgoritmhs = recomender.getTopAlgoritmth(path);
+        auto recommendedAlgoritmhs = recomender.getTopAlgoritmth(path, isDynamicModel);
         
-        std::cout << recommendedAlgoritmhs[0] << " " << recommendedAlgoritmhs[1] << std::endl;
+        // std::cout << recommendedAlgoritmhs[0] << " " << recommendedAlgoritmhs[1] << std::endl;
         return toSorter(recommendedAlgoritmhs[0]);
         
     } catch (std::exception& e) {
@@ -95,7 +104,7 @@ struct MlSorter {
                           const IdsSet& tools) {
 
         if (countSortings == 0) {
-            sorter = getBestSorter(data);
+            sorter = getBestSorter(data, front);
             std::cout << "Ml choose sorter" << std::endl;
         }
         applySort(sorter, data, front, tools);
@@ -111,8 +120,8 @@ struct MlHardSorter {
     void SortFront(const ProblemData& data, IdsVec& front,
                           const IdsSet& tools) {
         if (countSortings % freqSorting == 0) {
-            sorter = getBestSorter(data, countSortings);
-            std::cout << "Changed Hard solver on sorting=" << countSortings << std::endl;
+            sorter = getBestSorter(data, front, true);
+            // std::cout << "Changed Hard solver on sorting=" << countSortings << std::endl;
         }
         
         applySort(sorter, data, front, tools);

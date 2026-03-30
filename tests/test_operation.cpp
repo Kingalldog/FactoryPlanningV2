@@ -101,7 +101,8 @@ TEST_CASE("Advanced UnAppointment") {
                             0.5,        0.5,         132143};
 
     ProblemData data(genadiy.Generate(params));
-    Solver::Solve<DummySorter>(data, 13212423);
+    ProblemDataAndFront problemDataAndFront(data);
+    Solver::Solve<DummySorter>(problemDataAndFront, 13212423);
     for (auto& oper : data.operations) {
         CHECK(oper.Appointed());
         std::vector<TimePoint> possible_starts;

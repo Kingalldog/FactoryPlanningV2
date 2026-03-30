@@ -21,6 +21,16 @@ python3 heuristic_recommender.py --mode batch --problem_list tasks.txt --output 
 python3 interactive_recommender.py
 
 
+# Обучение
+python3 dynamic_recommender.py --mode train --train_data results.csv --save_model dynamic_model.pkl
+
+# Рекомендация для одной задачи
+python3 dynamic_recommender.py --mode recommend --model dynamic_model.pkl --problem ../../factory/dataset_directory_big/20_20/2349008_20_20_0.300000_0.300000_0.300000_1000_100_.txt --detailed
+
+# Пакетная обработка
+python3 dynamic_recommender.py --mode batch --model dynamic_model.pkl --problem_list problems.txt --output recommendations.csv
+
+
 🤖 Система рекомендации эвристик для задач планирования
 📋 Описание
 Данная система предназначена для автоматического выбора наиболее эффективной эвристики сортировки операций при решении задач планирования производства. На основе характеристик задачи (количество операций, структура графа зависимостей, временные параметры и т.д.) модель предсказывает, какая эвристика даст наименьший штраф.

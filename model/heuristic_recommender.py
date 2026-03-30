@@ -3,7 +3,6 @@ import argparse
 import pickle
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
 from lib.model_trainer import ModelTrainer
 
 class HeuristicRecommenderSystem:
@@ -23,9 +22,9 @@ class HeuristicRecommenderSystem:
         
         if model_path and os.path.exists(model_path):
             self.load_model(model_path)
-            # print(f"Модель загружена из {model_path}")
         else:
-            print(f"Модель не загружена из {model_path}")
+            if model_path:
+                print(f"Модель не найдена по пути: {model_path}")
     
     def train(self, results_csv, model_save_path=None, test_size=0.2):
         """
@@ -70,67 +69,202 @@ class HeuristicRecommenderSystem:
     def _analyze_model_performance(self, X, y, test_size=0.2):
         """Анализ производительности модели"""
         from sklearn.model_selection import train_test_split
-        from sklearn.metrics import classification_report, confusion_matrix
+        from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+        from sklearn.preprocessing import LabelEncoder
+        import numpy as np
+        import pandas as pd
         
+        print("\n" + "="*60)
+        print("АНАЛИЗ ПРОИЗВОДИТЕЛЬНОСТИ МОДЕЛИ")
+        print("="*60)
+        
+        if self.model is None:
+            print("Ошибка: модель не обучена")
+            return
+        
+        heuristic_names = self.trainer.heuristic_names if hasattr(self.trainer, 'heuristic_names') else \
+                        ['Dummy', 'Directive', 'Stoppable', 'Robin', 'FineSorter', 'Dependent']
+        
+        if not y or not isinstance(y[0], str):
+            print("Ошибка: ожидаются жесткие метки (hard labels)")
+            return
+        
+        temp_encoder = LabelEncoder()
+        y_encoded = temp_encoder.fit_transform(y)
+        
+        # Разделяем данные
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=42, stratify=y
+            X, y_encoded, test_size=test_size, random_state=42,
+            stratify=y_encoded if len(np.unique(y_encoded)) > 1 and min(np.bincount(y_encoded)) >= 2 else None
         )
         
-        # Обучаем временную модель для оценки
-        temp_model = RandomForestClassifier(n_estimators=200, random_state=42)
-        temp_model.fit(X_train, y_train)
-        y_pred = temp_model.predict(X_test)
+        print(f"Размер тестовой выборки: {len(X_test)}")
         
-        print("\n--- Оценка качества ---")
-        print(f"Точность на тестовой выборке ({len(y_test)} примеров): {np.mean(y_pred == y_test):.2%}")
+        # Предсказания через predict_from_features
+        y_pred = []
+        for i in range(len(X_test)):
+            test_row = X_test.iloc[i] if hasattr(X_test, 'iloc') else X_test[i]
+            test_df = pd.DataFrame([test_row], columns=self.feature_names)
+            
+            result = self.model.predict_from_features(test_df)
+            y_pred.append(result['best'])
         
-        # Матрица ошибок в процентах
-        cm = confusion_matrix(y_test, y_pred, labels=temp_model.classes_)
-        cm_percent = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
+        y_pred_encoded = temp_encoder.transform(y_pred)
+        accuracy = accuracy_score(y_test, y_pred_encoded)
+        
+        print(f"\nТочность на тестовой выборке: {accuracy:.2%}")
+        
+        y_test_decoded = temp_encoder.inverse_transform(y_test)
+        y_pred_decoded = temp_encoder.inverse_transform(y_pred_encoded)
+        
+        print("\nДетальный отчет по классам:")
+        print(classification_report(y_test_decoded, y_pred_decoded))
         
         print("\n--- Матрица ошибок (в % от каждого класса) ---")
-        print("      ", "  ".join([f"{c[:4]:>4}" for c in temp_model.classes_]))
-        for i, row in enumerate(cm_percent):
-            print(f"{temp_model.classes_[i][:6]:>6}", end=" ")
-            for val in row:
-                print(f"{val:5.1f}", end=" ")
-            print()
-    
+        cm = confusion_matrix(y_test, y_pred_encoded, normalize='true')
+        print("       ", "  ".join([f"{c[:4]:>4}" for c in heuristic_names[:6]]))
+        for i, h in enumerate(heuristic_names):
+            if i < len(cm):
+                row = " ".join([f"{val*100:5.1f}" for val in cm[i]])
+                print(f"{h[:5]:<6} {row}")
+
     def _analyze_heuristic_strengths(self, X, y, feature_importance):
-        """Анализ для каких задач какие эвристики лучше"""
-        print("\n--- Сильные стороны эвристик ---")
+        """
+        Анализ для каких задач какие эвристики лучше
+        Поддерживает как hard, так и soft labels
+        """
+        print("\n" + "="*60)
+        print("АНАЛИЗ СИЛЬНЫХ СТОРОН ЭВРИСТИК")
+        print("="*60)
         
-        # Топ-5 самых важных признаков
-        top_features = feature_importance.head(5)['feature'].tolist()
+        # Получаем данные из trainer
+        heuristic_names = self.trainer.heuristic_names
         
-        for heuristic in set(y):
-            indices = [i for i, val in enumerate(y) if val == heuristic]
-            if len(indices) < 3:
+        # Определяем тип меток
+        is_soft_labels = y and isinstance(y[0], dict)
+        
+        if is_soft_labels:
+            # Для soft labels берем основную эвристику
+            y_hard = []
+            for soft in y:
+                best_heuristic = max(soft.items(), key=lambda x: x[1])[0]
+                y_hard.append(best_heuristic)
+            y_series = pd.Series(y_hard)
+        else:
+            y_series = pd.Series(y)
+        
+        # Топ-10 самых важных признаков
+        top_features = feature_importance.head(10)['feature'].tolist()
+        
+        # Общие средние значения
+        overall_means = X.mean()
+        
+        for heuristic in heuristic_names:
+            # Находим задачи, где эта эвристика была лучшей
+            mask = y_series == heuristic
+            count = mask.sum()
+            
+            if count < 5:
+                print(f"\n{heuristic} ({count} задач): недостаточно данных для анализа")
                 continue
-                
-            print(f"\n{heuristic} ({len(indices)} задач):")
             
-            # Средние значения топ-признаков для этой эвристики
-            X_heuristic = X.iloc[indices]
-            X_mean = X.mean()
+            print(f"\n{heuristic} ({count} задач):")
             
+            # Выбираем задачи с этой эвристикой
+            heuristic_data = X[mask]
+            
+            # Анализируем топ-признаки
+            significant_deviations = []
             for feat in top_features:
-                if feat in X_heuristic.columns:
-                    heur_mean = X_heuristic[feat].mean()
-                    global_mean = X_mean[feat]
-                    diff = (heur_mean - global_mean) / global_mean if global_mean != 0 else 0
+                if feat in heuristic_data.columns and feat in overall_means.index:
+                    heur_mean = heuristic_data[feat].mean()
+                    global_mean = overall_means[feat]
                     
-                    direction = "выше" if diff > 0.1 else "ниже" if diff < -0.1 else "≈"
-                    if abs(diff) > 0.1:
-                        print(f"  - {feat}: {direction} среднего на {abs(diff):.1%}")
+                    if global_mean != 0:
+                        diff_pct = (heur_mean - global_mean) / abs(global_mean) * 100
+                        
+                        # Показываем только значимые отклонения (>10%)
+                        if abs(diff_pct) > 10:
+                            direction = "выше" if diff_pct > 0 else "ниже"
+                            significant_deviations.append((feat, direction, abs(diff_pct)))
+            
+            if significant_deviations:
+                # Сортируем по величине отклонения
+                significant_deviations.sort(key=lambda x: x[2], reverse=True)
+                for feat, direction, pct in significant_deviations[:7]:
+                    print(f"  - {feat}: {direction} среднего на {pct:.1f}%")
+            else:
+                print("  - Нет значимых отклонений (все признаки близки к средним)")
+
+    def _analyze_model_performance_simple(self, X, y, test_size=0.2):
+        """
+        Упрощенный анализ производительности (для быстрой проверки)
+        """
+        from sklearn.model_selection import train_test_split
+        from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+        
+        print("\n" + "="*60)
+        print("УПРОЩЕННЫЙ АНАЛИЗ ПРОИЗВОДИТЕЛЬНОСТИ")
+        print("="*60)
+        
+        # Получаем данные из trainer
+        label_encoder = self.trainer.label_encoder
+        heuristic_names = self.trainer.heuristic_names
+        scaler = self.trainer.scaler
+        
+        # Определяем тип меток
+        is_soft_labels = y and isinstance(y[0], dict)
+        
+        if is_soft_labels:
+            # Преобразуем в hard для простоты
+            y_hard = []
+            for soft in y:
+                best_heuristic = max(soft.items(), key=lambda x: x[1])[0]
+                y_hard.append(best_heuristic)
+            y_encoded = label_encoder.transform(y_hard)
+        else:
+            if isinstance(y[0], str):
+                y_encoded = label_encoder.transform(y)
+            else:
+                y_encoded = y
+        
+        # Масштабируем признаки
+        X_scaled = scaler.transform(X)
+        
+        # Разделяем данные
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_scaled, y_encoded, test_size=test_size, random_state=42,
+            stratify=y_encoded
+        )
+        
+        print(f"Размер тестовой выборки: {len(y_test)}")
+        
+        # Делаем предсказания
+        y_pred = self.model.predict(X_test)
+        
+        # Оценка
+        accuracy = accuracy_score(y_test, y_pred)
+        print(f"\nТочность на тестовой выборке: {accuracy:.2%}")
+        
+        # Детальный отчет
+        y_test_decoded = label_encoder.inverse_transform(y_test)
+        y_pred_decoded = label_encoder.inverse_transform(y_pred)
+        
+        print("\nДетальный отчет по классам:")
+        print(classification_report(y_test_decoded, y_pred_decoded))
+        
+        # Матрица ошибок
+        print("\n--- Матрица ошибок (в % от каждого класса) ---")
+        cm = confusion_matrix(y_test, y_pred, normalize='true')
+        print("       ", "  ".join([f"{c[:4]:>4}" for c in heuristic_names[:6]]))
+        for i, h in enumerate(heuristic_names):
+            if i < len(cm):
+                row = " ".join([f"{val*100:5.1f}" for val in cm[i]])
+                print(f"{h[:5]:<6} {row}")
     
     def recommend(self, problem_filepath, top_n=3, detailed=False):
         """
         Режим 2: Рекомендация эвристики для конкретной задачи
-        
-        problem_filepath: путь к файлу задачи
-        top_n: количество рекомендуемых эвристик
-        detailed: показывать детальную информацию
         """
         if self.model is None:
             raise ValueError("Модель не загружена! Сначала обучите или загрузите модель.")
@@ -160,23 +294,16 @@ class HeuristicRecommenderSystem:
         return result
 
     def only_recommend(self, problem_filepath, top_n=3, detailed=False):
+        """Только рекомендация без вывода"""
         if self.model is None:
-            raise ValueError("Модель не загружена! Сначала обучите или загрузите модель.")
-        # Получаем предсказание
+            raise ValueError("Модель не загружена!")
         result = self.trainer.predict_best_heuristic(problem_filepath)
-        
         if detailed:
             self._explain_recommendation(problem_filepath, result)
-        
         return result
     
     def batch_recommend(self, problem_files, output_csv=None):
-        """
-        Пакетная рекомендация для нескольких задач
-        
-        problem_files: список путей к файлам задач
-        output_csv: если указан, сохранить результаты в CSV
-        """
+        """Пакетная рекомендация"""
         results = []
         
         print("=" * 60)
@@ -204,11 +331,10 @@ class HeuristicRecommenderSystem:
                     'error': str(e)
                 })
         
-        # Сохраняем в CSV если нужно
         if output_csv:
             df = pd.DataFrame(results)
-            # Распаковываем вероятности в отдельные колонки
-            for h in ['Dummy', 'Directive', 'Stoppable', 'Robin', 'FineSorter', 'Dependent']:
+            heuristic_names = self.trainer.heuristic_names
+            for h in heuristic_names:
                 df[f'prob_{h}'] = df['probabilities'].apply(lambda x: x.get(h, 0) if isinstance(x, dict) else 0)
             df = df.drop('probabilities', axis=1)
             df.to_csv(output_csv, index=False)
@@ -217,10 +343,9 @@ class HeuristicRecommenderSystem:
         return results
     
     def _explain_recommendation(self, problem_filepath, result):
-        """Объяснение почему выбрана именно эта эвристика"""
+        """Объяснение рекомендации"""
         print("\n🔍 Детальный анализ:")
         
-        # Анализ уверенности
         if result['confidence'] >= 0.8:
             print("   - Очень высокая уверенность, можно смело использовать")
         elif result['confidence'] >= 0.6:
@@ -230,7 +355,6 @@ class HeuristicRecommenderSystem:
         else:
             print("   - Низкая уверенность, рекомендуется протестировать топ-3")
         
-        # Сравнение топ-2
         if len(result['probabilities']) >= 2:
             top1, prob1 = result['probabilities'][0]
             top2, prob2 = result['probabilities'][1]
@@ -242,51 +366,38 @@ class HeuristicRecommenderSystem:
                 print(f"   - {top1} moderately better than {top2}")
     
     def save_model(self, path, feature_importance=None):
-        """Сохранение модели и метаданных"""
-        model_data = {
-            'model': self.model,
-            'feature_names': self.feature_names,
-            'feature_importance': feature_importance.to_dict() if feature_importance is not None else None
-        }
-        with open(path, 'wb') as f:
-            pickle.dump(model_data, f)
+        """Сохранение модели"""
+        self.trainer.save_model(path)
     
     def load_model(self, path):
         """Загрузка модели"""
-        with open(path, 'rb') as f:
-            model_data = pickle.load(f)
-        
-        self.model = model_data['model']
-        self.feature_names = model_data['feature_names']
-        
-        # Восстанавливаем модель в trainer
-        self.trainer.model = self.model
-        self.trainer.feature_names = self.feature_names
+        self.trainer.load_model(path)
+        self.model = self.trainer.model
+        self.feature_names = self.trainer.feature_names
 
 
 def main():
     parser = argparse.ArgumentParser(description='Система рекомендации эвристик для задач планирования')
     parser.add_argument('--mode', type=str, choices=['train', 'recommend', 'names_only', 'batch'], 
-                       required=True, help='Режим работы: train (обучение) или recommend (рекомендация)')
+                       required=True, help='Режим работы')
     
     # Аргументы для обучения
     parser.add_argument('--train_data', type=str, help='Путь к CSV с обучающими данными')
     parser.add_argument('--save_model', type=str, default='heuristic_model.pkl', 
-                       help='Куда сохранить модель (по умолчанию: heuristic_model.pkl)')
+                       help='Куда сохранить модель')
     
     # Аргументы для рекомендации
     parser.add_argument('--model', type=str, default='heuristic_model.pkl', 
                        help='Путь к сохраненной модели')
-    parser.add_argument('--problem', type=str, help='Путь к файлу задачи для рекомендации')
-    parser.add_argument('--problem_list', type=str, help='Путь к текстовому файлу со списком задач (по одной на строку)')
-    parser.add_argument('--output', type=str, help='Куда сохранить результаты пакетной обработки')
+    parser.add_argument('--problem', type=str, help='Путь к файлу задачи')
+    parser.add_argument('--problem_list', type=str, help='Путь к файлу со списком задач')
+    parser.add_argument('--output', type=str, help='Куда сохранить результаты')
     parser.add_argument('--top_n', type=int, default=3, help='Количество рекомендуемых эвристик')
     parser.add_argument('--detailed', action='store_true', help='Показывать детальную информацию')
     
     args = parser.parse_args()
     
     if args.mode == 'train':
-        # Режим обучения
         if not args.train_data:
             print("Ошибка: для обучения необходимо указать --train_data")
             return
@@ -295,7 +406,6 @@ def main():
         recommender.train(args.train_data, args.save_model)
         
     elif args.mode == 'recommend':
-        # Режим рекомендации для одной задачи
         if not args.problem:
             print("Ошибка: для рекомендации необходимо указать --problem")
             return
@@ -311,20 +421,18 @@ def main():
             return
         
         recommender.recommend(args.problem, args.top_n, args.detailed)
+        
     elif args.mode == 'names_only':
-        # Режим вывода только имен алгоритмов
         if not args.problem:
             print("Error: need --problem")
             return
         
         recommender = HeuristicRecommenderSystem(args.model)
         result = recommender.only_recommend(args.problem, args.top_n, False)
-        
-        # Выводим только имена через запятую
         names = [h for h, prob in result['probabilities'][:args.top_n]]
         print(' '.join(names))
+        
     elif args.mode == 'batch':
-        # Режим пакетной обработки
         if not args.problem_list:
             print("Ошибка: для пакетной обработки необходимо указать --problem_list")
             return
@@ -333,7 +441,6 @@ def main():
             print(f"Ошибка: модель {args.model} не найдена")
             return
         
-        # Читаем список задач
         with open(args.problem_list, 'r') as f:
             problem_files = [line.strip() for line in f if line.strip()]
         

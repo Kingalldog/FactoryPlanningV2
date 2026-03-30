@@ -10,6 +10,7 @@
 namespace {
 
 const std::string PYTHON_SCRIPT = "../../model/heuristic_recommender.py";
+const std::string DYNAMIC_ML_NAME = "../../model/dynamic_recommender.py";
 
 std::vector<std::string> parseSpaceSeparated(const std::string& input) {
     std::vector<std::string> result;
@@ -49,10 +50,19 @@ private:
 public:
     SimpleRecommender(const std::string& path) : model_path(path) {}
     
-    std::vector<std::string> getTopAlgoritmth(const std::string& problem, int count = 3) {
+    std::vector<std::string> getTopAlgoritmth(const std::string& problem, bool isDynamicMl = false, int count = 3) {
         std::string cmd = std::string("python3 " + PYTHON_SCRIPT + " --mode names_only ") +
                           "--model \"" + model_path + "\" " +
                           "--problem \"" + problem + "\" --top_n " + std::to_string(count);
+        if (!isDynamicMl) {
+            cmd = std::string("python3 " + PYTHON_SCRIPT + " --mode names_only ") +
+                          "--model \"" + model_path + "\" " +
+                          "--problem \"" + problem + "\" --top_n " + std::to_string(count);
+        } else {
+            cmd = std::string("python3 " + DYNAMIC_ML_NAME + " --mode recommend ") +
+                          "--model \"" + model_path + "\" " +
+                          "--problem \"" + problem + "\" --top_n " + std::to_string(count);
+        }
         
         std::string output = exec(cmd);
 

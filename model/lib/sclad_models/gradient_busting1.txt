@@ -1,0 +1,348 @@
+#####################################
+import pandas as pd
+import numpy as np
+import os
+import networkx as nx
+import xgboost as xgb
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning)
+import tempfile
+import pickle
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+from lib.feature_parser import ProblemFeatureExtractor
+
+class ModelTrainer:
+    """Обучает модель предсказания лучшей эвристики с использованием градиентного бустинга (XGBoost)"""
+    
+    def __init__(self):
+        self.extractor = ProblemFeatureExtractor()
+        self.model = None
+        self.label_encoder = LabelEncoder()
+        self.feature_names = None
+        self.heuristic_names = ['Dummy', 'Directive', 'Stoppable', 'Robin', 'FineSorter', 'Dependent']
+        self._is_fitted = False
+        self.scaler = StandardScaler()
+
+    def analyze_ties(self, results_df, heuristic_names):
+        """Анализирует, как часто бывают ничьи и кто в них участвует"""
+        
+        tie_stats = {
+            'total_ties': 0,
+            'heuristic_in_ties': {h: 0 for h in heuristic_names},
+            'tie_patterns': {}
+        }
+        
+        for idx, row in results_df.iterrows():
+            scores = {h: row[h] for h in heuristic_names if h in row}
+            if not scores:
+                continue
+            min_time = min(scores.values())
+            
+            best_heuristics = [h for h, t in scores.items() if t == min_time]
+            
+            if len(best_heuristics) > 1:
+                tie_stats['total_ties'] += 1
+                
+                for h in best_heuristics:
+                    tie_stats['heuristic_in_ties'][h] += 1
+                
+                pattern = tuple(sorted(best_heuristics))
+                tie_stats['tie_patterns'][pattern] = tie_stats['tie_patterns'].get(pattern, 0) + 1
+        
+        print(f"Всего задач: {len(results_df)}")
+        print(f"Задач с ничьей: {tie_stats['total_ties']} ({tie_stats['total_ties']/len(results_df)*100:.1f}%)")
+        print("\nУчастие в ничьих:")
+        for h, count in sorted(tie_stats['heuristic_in_ties'].items(), key=lambda x: x[1], reverse=True):
+            if count > 0:
+                print(f"  {h}: {count} ({count/len(results_df)*100:.1f}%)")
+        
+        return tie_stats
+ 
+    def prepare_dataset(self, results_csv):
+        """
+        Подготавливает датасет для обучения
+        
+        results_csv: путь к CSV с результатами (где первая колонка - путь к файлу задачи)
+        """
+        # Загружаем результаты
+        results_df = pd.read_csv(results_csv, sep=';')
+        
+        X_list = []
+        y_list = []
+        problem_paths = []
+        skipped_files = []
+
+        # Анализируем ничьи (только для информации)
+        tie_stats = self.analyze_ties(results_df, self.heuristic_names)
+        
+        print(f"\nВсего записей в CSV: {len(results_df)}")
+        
+        for idx, row in results_df.iterrows():
+            problem_path = row.iloc[0]  # первая колонка - путь к файлу
+            
+            # Извлекаем признаки из файла задачи
+            features = self.extractor.extract_from_file(problem_path)
+            
+            if features is not None:
+                # Собираем времена для всех эвристик
+                scores = {}
+                for h in self.heuristic_names:
+                    if h in row.index:
+                        try:
+                            scores[h] = float(row[h])
+                        except (ValueError, TypeError):
+                            continue
+                
+                if scores:
+                    # Берем эвристику с минимальным временем (первую при ничьей)
+                    best_heuristic = min(scores, key=scores.get)
+                    
+                    X_list.append(features)
+                    y_list.append(best_heuristic)
+                    problem_paths.append(problem_path)
+                else:
+                    skipped_files.append(problem_path)
+            else:
+                skipped_files.append(problem_path)
+            
+            if (idx + 1) % 50 == 0:
+                print(f"Обработано {idx + 1} задач...")
+        
+        if not X_list:
+            print("Ошибка: не удалось извлечь признаки ни из одного файла")
+            return pd.DataFrame(), [], []
+        
+        X = pd.DataFrame(X_list)
+        self.feature_names = X.columns.tolist()
+        
+        print(f"\nУспешно обработано: {len(X)} задач")
+        print(f"Пропущено: {len(skipped_files)} задач")
+        print(f"Количество признаков: {len(self.feature_names)}")
+        
+        if len(skipped_files) > 0:
+            print("\nПримеры пропущенных файлов:")
+            for f in skipped_files[:5]:
+                print(f"  {f}")
+        
+        # Анализ распределения
+        y_series = pd.Series(y_list)
+        print("\nРаспределение лучших эвристик:")
+        for h in self.heuristic_names:
+            count = (y_series == h).sum()
+            if count > 0:
+                print(f"  {h}: {count} ({count/len(y_series)*100:.1f}%)")
+        
+        return X, y_list, problem_paths
+    
+    def train(self, X, y):
+        """Обучает модель градиентного бустинга"""
+        # Проверяем уникальные значения в y
+        unique_classes = np.unique(y)
+        print(f"\nУникальные классы в данных: {unique_classes}")
+        print(f"Количество классов: {len(unique_classes)}")
+        
+        if len(unique_classes) < 2:
+            raise ValueError("В данных только один класс! Невозможно обучить модель.")
+        
+        # Кодируем целевую переменную
+        y_encoded = self.label_encoder.fit_transform(y)
+        self._is_fitted = True
+        
+        # Проверяем распределение после кодирования
+        print("\nРаспределение после кодирования:")
+        for i, class_name in enumerate(self.label_encoder.classes_):
+            count = np.sum(y_encoded == i)
+            print(f"  {class_name} (код {i}): {count} примеров")
+        
+        # Масштабируем признаки
+        X_scaled = self.scaler.fit_transform(X)
+        X_scaled = pd.DataFrame(X_scaled, columns=X.columns)
+        
+        # Проверяем, что у нас достаточно данных для каждого класса
+        y_series = pd.Series(y)
+        min_class_size = y_series.value_counts().min()
+        
+        # Используем стратификацию если возможно
+        if min_class_size >= 2 and len(unique_classes) > 1:
+            stratify_param = y_encoded
+            print(f"\nИспользуем стратификацию (минимальный класс: {min_class_size})")
+        else:
+            stratify_param = None
+            print("\nПродолжаем без стратификации")
+        
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_scaled, y_encoded, test_size=0.2, random_state=42, 
+            stratify=stratify_param
+        )
+        
+        # Проверяем что в тесте есть все классы
+        print("\nКлассы в обучающей выборке:", np.unique(y_train))
+        print("Классы в тестовой выборке:", np.unique(y_test))
+        
+        # Настраиваем веса классов для борьбы с дисбалансом
+        class_weights = len(y) / (len(unique_classes) * np.bincount(y_encoded))
+        sample_weights = class_weights[y_train]
+        
+        # Создаем XGBoost модель
+        self.model = xgb.XGBClassifier(
+            n_estimators=500,
+            max_depth=10,
+            learning_rate=0.03,
+            subsample=0.7,
+            colsample_bytree=0.7,
+            min_child_weight=2,
+            gamma=0.05,
+            reg_alpha=0.5,
+            reg_lambda=1.5,
+            random_state=42,
+            use_label_encoder=False,
+            eval_metric='mlogloss',
+            verbosity=0
+        )
+        
+        # Обучаем модель
+        self.model.fit(
+            X_train, y_train,
+            eval_set=[(X_test, y_test)],
+            verbose=False,
+            sample_weight=sample_weights
+        )
+        
+        # Оценка на тесте
+        y_pred = self.model.predict(X_test)
+        accuracy = accuracy_score(y_test, y_pred)
+        
+        print(f"\n=== Результаты обучения (XGBoost) ===")
+        print(f"Точность на тестовой выборке: {accuracy:.2%}")
+        
+        # Проверяем, не предсказывает ли модель только один класс
+        unique_pred = np.unique(y_pred)
+        print(f"Уникальные предсказания на тесте: {unique_pred}")
+        
+        # Детальный отчет
+        y_test_decoded = self.label_encoder.inverse_transform(y_test)
+        y_pred_decoded = self.label_encoder.inverse_transform(y_pred)
+        
+        print("\nДетальный отчет по классам:")
+        print(classification_report(y_test_decoded, y_pred_decoded))
+        
+        # Важность признаков
+        feature_importance = pd.DataFrame({
+            'feature': self.feature_names,
+            'importance': self.model.feature_importances_
+        }).sort_values('importance', ascending=False)
+        
+        print("\nТоп важных признаков:")
+        for i, row in feature_importance.head(15).iterrows():
+            print(f"  {row['feature']}: {row['importance']:.4f}")
+        
+        return self.model, feature_importance
+    
+    def predict_best_heuristic(self, problem_filepath):
+        """Предсказывает лучшую эвристику для новой задачи"""
+        if self.model is None:
+            print("Модель не обучена!")
+            return {
+                'best': 'Dummy',
+                'probabilities': [('Dummy', 1.0)],
+                'confidence': 1.0,
+                'error': 'model not trained'
+            }
+        
+        if not self._is_fitted:
+            print("Label encoder не обучен!")
+            if hasattr(self.model, 'classes_'):
+                self.label_encoder.classes_ = self.model.classes_
+                self._is_fitted = True
+                print("Восстановили label encoder из модели")
+            else:
+                return {
+                    'best': 'Dummy',
+                    'probabilities': [('Dummy', 1.0)],
+                    'confidence': 1.0,
+                    'error': 'label encoder not fitted'
+                }
+        
+        try:
+            features = self.extractor.extract_from_file(problem_filepath)
+            if features is None:
+                return {
+                    'best': 'Dummy',
+                    'probabilities': [('Dummy', 1.0)],
+                    'confidence': 1.0,
+                    'error': 'Feature extraction failed'
+                }
+            
+            features_df = pd.DataFrame([features])
+            
+            if self.feature_names:
+                for col in self.feature_names:
+                    if col not in features_df.columns:
+                        features_df[col] = 0
+                features_df = features_df[self.feature_names]
+            
+            features_scaled = self.scaler.transform(features_df)
+            features_scaled = pd.DataFrame(features_scaled, columns=self.feature_names)
+            
+            prediction_encoded = self.model.predict(features_scaled)[0]
+            prediction = self.label_encoder.inverse_transform([prediction_encoded])[0]
+            
+            proba = self.model.predict_proba(features_scaled)[0]
+            
+            proba_dict = {}
+            for i, class_name in enumerate(self.label_encoder.classes_):
+                proba_dict[class_name] = float(proba[i])
+            
+            sorted_heuristics = sorted(proba_dict.items(), key=lambda x: x[1], reverse=True)
+            
+            return {
+                'best': prediction,
+                'probabilities': sorted_heuristics,
+                'confidence': float(max(proba))
+            }
+            
+        except Exception as e:
+            print(f"Ошибка при предсказании: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'best': 'Dummy',
+                'probabilities': [('Dummy', 1.0)],
+                'confidence': 1.0,
+                'error': str(e)
+            }
+    
+    def save_model(self, filepath):
+        """Сохраняет модель в файл"""
+        model_data = {
+            'model': self.model,
+            'feature_names': self.feature_names,
+            'label_encoder': self.label_encoder,
+            'heuristic_names': self.heuristic_names,
+            '_is_fitted': self._is_fitted,
+            'scaler': self.scaler
+        }
+        with open(filepath, 'wb') as f:
+            pickle.dump(model_data, f)
+        print(f"Модель сохранена в {filepath}")
+    
+    def load_model(self, filepath):
+        """Загружает модель из файла"""
+        with open(filepath, 'rb') as f:
+            model_data = pickle.load(f)
+        
+        self.model = model_data['model']
+        self.feature_names = model_data['feature_names']
+        self.heuristic_names = model_data['heuristic_names']
+        self._is_fitted = model_data['_is_fitted']
+        self.label_encoder = model_data['label_encoder']
+        self.scaler = model_data['scaler']
+
+

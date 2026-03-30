@@ -42,7 +42,8 @@ int main() {
               << score.not_appointed_fine << '\n';
 
     ProblemData data_copy = data;
-    Solver::Solve<StoppableSorter>(data_copy, 123432524);
+    ProblemDataAndFront problemDataAndFront(data);
+    Solver::Solve<StoppableSorter>(problemDataAndFront, 123432524);
     SolutionChecker::Check(data_copy);
     Score score_2 = BasicScorer::CalcScore(data_copy, 100);
     std::cout << "One step: " << score_2.appointed_fine << " || "

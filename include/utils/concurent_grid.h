@@ -60,12 +60,19 @@ public:
         auto row_it = row_labels_.find(row_label);
         auto col_it = col_labels_.find(col_label);
 
+        if (row_it == row_labels_.end()) {
+            row_labels_[row_label] = data_.size();
+            data_.push_back(std::vector<T>(col_labels_.size()));
+        }
+
+        row_it = row_labels_.find(row_label);
         if (row_it != row_labels_.end() && col_it != col_labels_.end()) {
             size_t row = row_it->second;
             size_t col = col_it->second;
             data_[row][col] = value;
             return true;
         }
+        
         return false;
     }
 

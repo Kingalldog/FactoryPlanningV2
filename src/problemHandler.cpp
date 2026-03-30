@@ -50,8 +50,17 @@ void ProblemHandler::AppointmentProcess(
     }
 
     // remove operations from work
-    for (auto& work : data_.works) {
+    std::vector<size_t> removeWorkIndex;
+    for (size_t i = 0; i < data_.works.size(); ++i) {
+        auto& work = data_.works[i];
         work->removeOperations(operation.ID());
+        if (work->OperationIDs().size() == 0) {
+            removeWorkIndex.push_back(i);
+        }
+    }
+
+    for(auto i = removeWorkIndex.rbegin(); i != removeWorkIndex.rend(); ++i) {
+        data_.works.erase(data_.works.begin() + *i);
     }
 }
 
