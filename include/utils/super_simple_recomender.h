@@ -10,7 +10,7 @@
 namespace {
 
 const std::string PYTHON_SCRIPT = "../../model/heuristic_recommender.py";
-const std::string DYNAMIC_ML_NAME = "../../model/dynamic_recommender.py";
+const std::string DYNAMIC_ML_NAME = "../../model/new_dynamic_recommender.py";
 
 std::vector<std::string> parseSpaceSeparated(const std::string& input) {
     std::vector<std::string> result;

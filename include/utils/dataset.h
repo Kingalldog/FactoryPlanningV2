@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstddef>
 #include <string>
+#include <optional>
 
 #include "basics/problem_data.h"
 

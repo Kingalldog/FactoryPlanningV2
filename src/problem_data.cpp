@@ -1,6 +1,8 @@
 #include "basics/problem_data.h"
 
 #include <regex>
+#include <iomanip>   // for std::get_time
+#include <ctime>     // for std::tm
 
 TimePoint ParseTimePoint(const std::string& str) {
     std::istringstream iss(str);
@@ -53,6 +55,8 @@ ProblemData::ProblemData(std::ifstream& input) {
             operations[op_id].SetWorkPtr((works[i]));
         }
     }
+
+    count_operations = operations.size();
 }
 
 void ProblemData::FillTools(std::ifstream& input) {
@@ -139,4 +143,38 @@ void ProblemData::AddWork(std::ifstream& input) {
         operations[master].AddDepended(slave);
         operations[slave].AddDependency(master);
     }
+}
+
+ProblemData DeepCopy(const ProblemData& src) {
+    ProblemData d;
+
+    // tools и times_matrix — value-типы, обычное копирование
+    d.tools        = src.tools;
+    d.times_matrix = src.times_matrix;
+
+    // works — shared_ptr, нужен глубокий клон с запоминанием соответствия
+    std::unordered_map<const Work*, WorkPtr> old_to_new;
+    old_to_new.reserve(src.works.size());
+    d.works.reserve(src.works.size());
+    for (const auto& w : src.works) {
+        if (!w) { d.works.push_back(nullptr); continue; }
+        auto copy = std::make_shared<Work>(*w);
+        old_to_new.emplace(w.get(), copy);
+        d.works.push_back(std::move(copy));
+    }
+
+    // operations — копия по значению + перепривязка WorkPtr
+    d.operations = src.operations;
+    for (auto& op : d.operations) {
+        if (auto p = op.PtrToWork()) {
+            auto it = old_to_new.find(p.get());
+            // assert(it != old_to_new.end() &&
+            //        "Operation::ptr_to_work_ points outside src.works");
+            op.SetWorkPtr(it != old_to_new.end() ? it->second : nullptr);
+        }
+    }
+
+    d.count_operations = src.count_operations;
+
+    return d;
 }

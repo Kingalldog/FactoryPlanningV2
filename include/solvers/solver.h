@@ -10,19 +10,14 @@
 #include "utils/printer.h"
 #include "problem_data_and_front.h"
 
-namespace {
-
-const int savedIteration = 100;
-
-} // namespace
-
 class Solver {
 public:
     template <CanSort Sorter>
     static MlDatasetCreationType Solve(
         ProblemDataAndFront& dataAndFront,
         int seed = 185643241,
-        bool hardMlTraning = false) {
+        bool hardMlTraning = false,
+        int savedIteration = 30) {
         RandomGenerator gena(seed);
 
         auto& data = dataAndFront.data();
@@ -35,8 +30,8 @@ public:
         auto& timestamps = dataAndFront.timestamps();
 
        
-        int countIterayions = 0;
-        while (!timestamps.empty()) {
+        int countOperations = problemHandler.operations_count_;
+        while (!timestamps.empty() && problemHandler.operations_count_ > 0) {
             current_time = *timestamps.begin();
             timestamps.erase(current_time);
 
@@ -53,8 +48,8 @@ public:
                                data, timestamps, problemHandler);
             
             // only for preparing data fo dynamic ml model
-            countIterayions++;
-            if (hardMlTraning && countIterayions == savedIteration) {
+            auto del_operations_count = countOperations - problemHandler.operations_count_;
+            if (hardMlTraning && del_operations_count >= savedIteration) {
                 return MlDatasetCreationType::Working;
             }
         }

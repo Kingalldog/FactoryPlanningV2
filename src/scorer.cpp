@@ -67,6 +67,19 @@ Score BasicScorer::CalcScore(const ProblemData& data,
                              double not_appointed_coef) {
     Score score;
     auto [fully_appointed, not_fully_appointed] = SeparateWorks(data);
+    
+    // auto minTime = kStartTimePoint;
+    // for (WorkPtr work : fully_appointed) {
+    //     // TimePoint end_time = kStartTimePoint;
+    //     for (size_t id : work->OperationIDs()) {
+    //         if (minTime == kStartTimePoint) { 
+    //             minTime = data.operations[id].GetStEndTimes().first;
+    //         } else if (minTime > data.operations[id].GetStEndTimes().first) {
+    //             minTime = data.operations[id].GetStEndTimes().first;
+    //         }
+    //     }
+
+    // }
 
     for (WorkPtr work : fully_appointed) {
         TimePoint end_time = kStartTimePoint;
@@ -83,9 +96,10 @@ Score BasicScorer::CalcScore(const ProblemData& data,
                 std::max(end_time - work->Directive(), Duration(0)))
                 .count();
         // score.appointed_fine +=
-        //     calculatePenalty(
-        //         std::chrono::duration<double>(std::max(end_time - work->Directive(), Duration(0))).count(),
-        //         work->FineCoef());
+        //     work->FineCoef() *
+        //     std::chrono::duration<double>(
+        //         std::max(end_time - minTime, Duration(0)))
+        //         .count();
     }
 
     score.not_appointed_fine =

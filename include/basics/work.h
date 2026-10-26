@@ -20,10 +20,9 @@ public:
     bool AddOperation(size_t id);
 
     void removeOperations(size_t id);
-
+TimePoint start_time_;
 private:
     bool DelOperation(size_t id);
-    TimePoint start_time_;
     TimePoint directive_;
     double fine_coef_;
     size_t id_;

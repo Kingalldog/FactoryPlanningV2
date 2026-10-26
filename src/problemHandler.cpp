@@ -49,6 +49,8 @@ void ProblemHandler::AppointmentProcess(
         dataOperation.DelDependency(operation.ID(), endTime);
     }
 
+    operations_count_--;
+
     // remove operations from work
     std::vector<size_t> removeWorkIndex;
     for (size_t i = 0; i < data_.works.size(); ++i) {
@@ -67,4 +69,5 @@ void ProblemHandler::AppointmentProcess(
 void ProblemHandler::setData(ProblemData data)
 {
     data_ = data;
+    operations_count_ = data.operations.size();
 }

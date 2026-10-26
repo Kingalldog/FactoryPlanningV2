@@ -3,9 +3,42 @@ import re
 from datetime import datetime
 import networkx as nx
 
+
 class ProblemFeatureExtractor:
     """Извлекает признаки из файла задачи"""
-    
+    # ============================================================================
+    # ПАМЯТКА: ИЗВЛЕКАЕМЫЕ ПРИЗНАКИ (ProblemFeatureExtractor)
+    # ============================================================================
+    # 1. РАЗМЕРНОСТНЫЕ
+    #    n_tools              - число инструментов
+    #    n_operations         - число операций
+    #    n_works              - число работ
+    #    stoppable_ratio      - доля "прерываемых" операций (sum(stoppable)/n_operations)
+    #
+    # 2. ВРЕМЕННАЯ МАТРИЦА (times_matrix, ненулевые элементы)
+    #    avg_time / std_time / min_time / max_time - статистика длительностей
+    #    time_range           - max_time - min_time
+    #    time_cv              - коэффициент вариации (std/avg)
+    #    matrix_density       - доля ненулевых ячеек (используемость операций на инструментах)
+    #
+    # 3. РАБОТЫ (works)
+    #    avg/std_work_duration - статистика длительности работ (directive - start)
+    #    avg/std_fine_coef     - статистика штрафных коэффициентов
+    #    avg/max/std_ops_per_work - статистика числа операций в работе
+    #    avg_slack / min_slack / slack_range - временной запас (directive - now)
+    #
+    # 4. ГРАФ ЗАВИСИМОСТЕЙ (NetworkX DiGraph по dependencies)
+    #    n_edges              - число рёбер
+    #    graph_density        - плотность графа: E / (N*(N-1))
+    #    avg/max_in_degree    - статистика входящих степеней
+    #    avg/max_out_degree   - статистика исходящих степеней
+    #
+    # 5. ЗАГРУЗКА ИНСТРУМЕНТОВ (tool_intervals)
+    #    avg_tool_busy        - средняя длительность интервала занятости
+    #    std_tool_busy        - СКО длительности интервалов
+    #    total_tool_busy      - суммарная занятость всех инструментов
+    # ============================================================================
+        
     def parse_time(self, time_str):
         """Парсит время из формата '24.02.26_11:45:56'"""
         time_part = time_str.split('_')[1]
@@ -260,3 +293,81 @@ class ProblemFeatureExtractor:
             features['total_tool_busy'] = 0
         
         return features
+
+
+class ProblemFeatureExtractorWithExtras:
+    """Обёртка над ProblemFeatureExtractor (через композицию).
+
+    Не меняет поведение базового парсера — только добавляет к его
+    результату признаки из секций PREFRONT и OPERATIONS_LEFT:
+
+        prefront_size         - размер PREFRONT (29 в примере)
+        prefront_ratio        - prefront_size / n_operations
+        operations_left       - скаляр OPERATIONS_LEFT (119 в примере)
+        operations_left_ratio - operations_left / n_operations
+
+    Пример:
+        ex = ProblemFeatureExtractorWithExtras()
+        feats = ex.extract_from_file("task.txt")
+
+        # можно подменить базовый парсер, если появится другая версия:
+        ex = ProblemFeatureExtractorWithExtras(base=MyOtherExtractor())
+    """
+
+    def __init__(self, base=None):
+        self._base = base if base is not None else ProblemFeatureExtractor()
+
+    # ---- публичный API, совместимый с базовым классом ----
+    def parse_time(self, time_str):
+        return self._base.parse_time(time_str)
+
+    def compute_features(self, data):
+        return self._base.compute_features(data)
+
+    def extract_from_file(self, filepath):
+        features = self._base.extract_from_file(filepath)
+        # базовый парсер вернул None (файл не найден) или {} (ошибка парсинга)
+        if not features:
+            return features
+
+        try:
+            with open(filepath, 'r') as f:
+                content = f.read()
+        except FileNotFoundError:
+            return features
+
+        n_ops = features.get('n_operations', 0) or 0
+        features.update(self._extract_extra(content, n_ops))
+        return features
+
+    __call__ = extract_from_file
+
+    # ---- внутренняя логика ----
+    def _extract_extra(self, content, n_ops):
+        lines = content.strip().split('\n')
+        extra = {}
+
+        pref = self._read_int_after_header(lines, 'PREFRONT')
+        extra['prefront_size'] = pref if pref is not None else 0
+        extra['prefront_ratio'] = (pref / n_ops) if (pref is not None and n_ops > 0) else 0
+
+        ol = self._read_int_after_header(lines, 'OPERATIONS_LEFT')
+        extra['operations_left'] = ol if ol is not None else 0
+        extra['operations_left_ratio'] = (ol / n_ops) if (ol is not None and n_ops > 0) else 0
+
+        return extra
+
+    @staticmethod
+    def _read_int_after_header(lines, header):
+        """Возвращает первое целое, идущее после строки-заголовка `header`, или None."""
+        for i, line in enumerate(lines):
+            if header in line:
+                for j in range(i + 1, len(lines)):
+                    token = lines[j].strip()
+                    if not token:
+                        continue
+                    try:
+                        return int(token)
+                    except ValueError:
+                        return None
+        return None

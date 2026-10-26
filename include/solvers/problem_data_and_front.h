@@ -19,18 +19,17 @@ using TimePointsQueue = std::set<TimePoint>;
 class ProblemDataAndFront {
 public:
     ProblemDataAndFront(const ProblemData& data)
-        : data_(data), problemHandler_(data) {
-
+        : data_(DeepCopy(data)), problemHandler_(data) {
             preFront_ = CalcPreFront(data);
             timestamps_ = GetStartTimes(data);
         }
-    // ProblemDataAndFront(ProblemDataAndFront& other)
-    // {
-    //         data_ = other.data_;
-    //         problemHandler_ = other.problemHandler_;
-    //         preFront_ = other.preFront_;
-    //         timestamps_ = other.timestamps_;
-    // }
+    ProblemDataAndFront(const ProblemDataAndFront& other)
+        : data_(DeepCopy(other.data_)),
+        preFront_(other.preFront_),
+        currentTime_(other.currentTime_),
+        timestamps_(other.timestamps_),
+        problemHandler_(other.problemHandler_)   // его copy ctor делает deep copy
+    {}
     ProblemData& data() {
         return data_;
     }
@@ -46,6 +45,17 @@ public:
     ProblemHandler& problemHandler() {
         return problemHandler_;
     }
+
+    void fixTimes() {
+        if (timestamps_.size() == 0) {
+            return ;
+        }
+        currentTime_ = *timestamps_.begin();
+        for (auto& work : problemHandler_.data().works) {
+            work->start_time_ = std::max(work->start_time_, currentTime_);
+        }
+    }
+
 private:
     static CountSet<size_t> CalcPreFront(const ProblemData& data) {
         CountSet<size_t> pre_front;
@@ -91,6 +101,9 @@ inline std::ostream& operator<<(std::ostream& out, ProblemDataAndFront& problemD
     for (auto e : operations) {
         out << e << " ";
     }
+
+    out << "\nOPERATIONS_LEFT\n";
+    out << problemDataAndFront.problemHandler().operations_count_;
     out << std::endl;
     Printer::PrintProblemData(problemDataAndFront.problemHandler().data(), out);
 

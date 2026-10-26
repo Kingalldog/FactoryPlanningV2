@@ -18,7 +18,7 @@ const std::string FINE_SORTER = "FineSorter";
 const std::string DEPEND_SORTER = "Dependent";
 
 const std::string MODEL_PATH = "../../model/heuristic_model.pkl";
-const std::string DYNAMIC_MODEL_PATH = "../../model/dynamic_model.pkl";
+const std::string DYNAMIC_MODEL_PATH = "../../model/saved_models/histgb.joblib";
 const std::string DATA_PATH = "tmp.txt";
 
 using SorterVariant = std::variant<
@@ -76,6 +76,9 @@ SorterVariant getBestSorter(const ProblemData& data,  IdsVec& front, bool isDyna
                 for (auto e : front) {
                     out << e << " ";
                 }
+                // out << std::endl;
+                out << "\nOPERATIONS_LEFT\n";
+                out << data.count_operations;
                 out << std::endl;
             }
             Printer::PrintProblemData(data, out);
@@ -129,7 +132,7 @@ struct MlHardSorter {
     }
 
     std::atomic<int> countSortings = 0;
-    const int freqSorting = 250;
+    const int freqSorting = 10;
     SorterVariant sorter = DummySorter{};
 };
 

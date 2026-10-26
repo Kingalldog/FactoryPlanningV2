@@ -96,6 +96,7 @@ void Solver::AppointmentProcess(const IdsVec& front,
 
             removedPreforntIndex.insert(oper);
             problemHandler.AppointmentProcess(best_tool_id, operation);
+            data.count_operations--;
         }
     }
     

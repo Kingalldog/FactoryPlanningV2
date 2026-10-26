@@ -3,6 +3,7 @@
 #include <random>
 #include <set>
 #include <utility>
+#include <ostream>      // or #include <iostream>
 
 namespace ch = std::chrono;
 
@@ -13,6 +14,15 @@ using IdsVec = std::vector<std::size_t>;
 using StEndTimes = std::pair<TimePoint, TimePoint>;
 
 constexpr TimePoint kStartTimePoint{ch::time_point<ch::system_clock>::min()};
+
+inline std::ostream& operator<<(std::ostream& os, const TimePoint& tp)
+{
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(
+        tp.time_since_epoch()
+    ).count();
+    os << seconds;
+    return os;
+}
 
 class RandomGenerator {
 public:

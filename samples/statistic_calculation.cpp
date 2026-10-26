@@ -29,7 +29,7 @@ namespace {
 
 const std::string folderPath = "../../../factory/dataset_directory_big/";
 const std::string mlRemainsPath = "../../../factory/dataset_directory_big/ml_remains/";
-const std::string folderName = "for_ml_traning";
+const std::string folderName = "for_validation";
 
 void savedData(const std::string& name, ProblemDataAndFront& dataAndFront) {
     std::ofstream out(mlRemainsPath + name, std::ios::app);
@@ -79,8 +79,9 @@ TaskData oneRunning(
     const std::string& name,
     const std::string algoName)
 {
-    Solver::Solve<Sorter>(dataProblemAndFontCopy, kSolverSeedFirst, true);
-    // solve all with dummy sorting
+    Solver::Solve<Sorter>(dataProblemAndFontCopy, kSolverSeedFirst, true, 200);
+    // Solver::Solve<Sorter>(dataProblemAndFontCopy, kSolverSeedFirst, true);
+    // // solve all with dummy sorting
     Solver::Solve<DummySorter>(dataProblemAndFontCopy, kSolverSeedFirst);
     SolutionChecker::Check(dataProblemAndFontCopy.data());
     Score score_1 = BasicScorer::CalcScore(dataProblemAndFontCopy.data(), kScoreMult);
@@ -88,7 +89,7 @@ TaskData oneRunning(
     return {
         .name = name,
         .algoname = algoName,
-        .fine = score_1.appointed_fine
+        .fine = score_1.appointed_fine + score_1.not_appointed_fine
     };
 }
 
@@ -99,13 +100,16 @@ void PipelineForMl(
     const std::string& name)
 {
     ProblemDataAndFront problemDataAndFront(data);
+    // std::cout << problemDataAndFront.problemHandler().operations_count_ << "\n";
     auto operationType = MlDatasetCreationType::Working;
     int iteration = 0;
+    auto del_operation = std::min(50, problemDataAndFront.problemHandler().operations_count_ / 5);
     while (operationType == MlDatasetCreationType::Working) {
-        if (iteration > 10) {
+        if (iteration > 10 || problemDataAndFront.problemHandler().operations_count_ < 30) {
             return;
         }
-        auto savedName = name.substr(folderPath.length() + folderName.length(), name.length()) +"_itaration_" + std::to_string(iteration);
+        int saved_prbd_operation = problemDataAndFront.problemHandler().operations_count_;
+        auto savedName = name.substr(folderPath.length() + folderName.length(), name.length() - 3) +"_itaration_" + std::to_string(iteration) + ".txt";
         savedData(savedName, problemDataAndFront);
 
         std::vector<TaskData> taskDatas;
@@ -113,21 +117,27 @@ void PipelineForMl(
         // taskDatas.push_back(
         //     oneRunning<DummySorter>(problemDataAndFront, savedName, "Dummy")
         // );
+        problemDataAndFront.problemHandler().operations_count_ = saved_prbd_operation;
         taskDatas.push_back(
             oneRunning<DummySorter>(problemDataAndFront, savedName, "Dummy")
         );
+        problemDataAndFront.problemHandler().operations_count_ = saved_prbd_operation;
         taskDatas.push_back(
             oneRunning<DirectiveTimeSorter>(problemDataAndFront, savedName, "Directive")
         );
+        problemDataAndFront.problemHandler().operations_count_ = saved_prbd_operation;
         taskDatas.push_back(
             oneRunning<StoppableSorter>(problemDataAndFront, savedName, "Stoppable")
         );
+        problemDataAndFront.problemHandler().operations_count_ = saved_prbd_operation;
         taskDatas.push_back(
             oneRunning<RoundRobinSorter>(problemDataAndFront, savedName, "Robin")
         );
+        problemDataAndFront.problemHandler().operations_count_ = saved_prbd_operation;
         taskDatas.push_back(
             oneRunning<FineSorter>(problemDataAndFront, savedName, "FineSorter")
         );
+        problemDataAndFront.problemHandler().operations_count_ = saved_prbd_operation;
         taskDatas.push_back(
             oneRunning<DependedSorter>(problemDataAndFront, savedName, "Dependent")
         );
@@ -144,7 +154,9 @@ void PipelineForMl(
             table.Set(taskData.name, taskData.algoname, taskData.fine);
         }
 
-        operationType = Solver::Solve<DummySorter>(problemDataAndFront, kSolverSeedFirst, true);
+        problemDataAndFront.problemHandler().operations_count_ = saved_prbd_operation;
+        operationType = Solver::Solve<DummySorter>(problemDataAndFront, kSolverSeedFirst, true, del_operation);
+        problemDataAndFront.fixTimes();
         ++iteration;
     }
 }
@@ -162,8 +174,8 @@ double PipelineForMultistep(const ProblemData& data) {
 int main() {
     std::vector<std::string> row_names;
     std::vector<std::string> col_names{
-        "Dummy",         "Directive",     "Stoppable",      "Robin",
-        "FineSorter",     "Dependent"/*,"MlSorter", "MlHardSorter","MDummy6_2",      "MDirective6_2",
+        /*"Dummy",*/         "Directive",     "Stoppable",      "Robin",
+        "FineSorter",     "Dependent","MlSorter", "MlHardSorter"/*,"MDummy6_2",      "MDirective6_2",
         "MStoppable6_2",  "MRobin6_2",     "MFineSorter6_2", "MDependent6_2",
         "MDummy3_4",      "MDirective3_4", "MStoppable3_4",  "MRobin3_4",
         "MFineSorter3_4", "MDependent3_4", "MDummy2_8",      "MDirective2_8",
@@ -186,7 +198,7 @@ int main() {
                         auto start = std::chrono::system_clock::now();
                         // table.Set(name.value(), "Dummy",
                         //         Pipeline<DummySorter>(data));
-                        PipelineForMl(data, table, name.value());
+                        // PipelineForMl(data, table, name.value());
                         // PipelineForMl<DummySorter>(data, table, name.value(), "Dummy");
                         // PipelineForMl<DirectiveTimeSorter>(data, table, name.value(), "Directive");
                         // PipelineForMl<StoppableSorter>(data, table, name.value(), "Stoppable");
@@ -195,20 +207,20 @@ int main() {
                         // PipelineForMl<DependedSorter>(data, table, name.value(), "Dependent");
                         // table.Set(name.value(), "Dummy",
                         //         Pipeline<DummySorter>(data));
-                        // table.Set(name.value(), "Directive",
-                        //         Pipeline<DirectiveTimeSorter>(data));
-                        // table.Set(name.value(), "Stoppable",
-                        //         Pipeline<StoppableSorter>(data));
-                        // table.Set(name.value(), "Robin",
-                        //         Pipeline<RoundRobinSorter>(data));
-                        // table.Set(name.value(), "FineSorter",
-                        //         Pipeline<FineSorter>(data));
-                        // table.Set(name.value(), "Dependent",
-                        //         Pipeline<DependedSorter>(data));
-                        // table.Set(name.value(), "MlSorter",
-                        //         Pipeline<MlSorter>(data));
-                        // table.Set(name.value(), "MlHardSorter",
-                        //         Pipeline<MlHardSorter>(data));
+                        table.Set(name.value(), "Directive",
+                                Pipeline<DirectiveTimeSorter>(data));
+                        table.Set(name.value(), "Stoppable",
+                                Pipeline<StoppableSorter>(data));
+                        table.Set(name.value(), "Robin",
+                                Pipeline<RoundRobinSorter>(data));
+                        table.Set(name.value(), "FineSorter",
+                                Pipeline<FineSorter>(data));
+                        table.Set(name.value(), "Dependent",
+                                Pipeline<DependedSorter>(data));
+                        table.Set(name.value(), "MlSorter",
+                                Pipeline<MlSorter>(data));
+                        table.Set(name.value(), "MlHardSorter",
+                                Pipeline<MlHardSorter>(data));
                         // table.Set(name.value(), "MDummy6_2",
                         //           PipelineForMultistep<DummySorter, 6, 2>(data));
                         // table.Set(
@@ -269,7 +281,7 @@ int main() {
                                 << " solution taked: " << std::setw(8)
                                 << std::chrono::duration_cast<
                                         std::chrono::milliseconds>(
-                                        std::chrono::system_clock::now() - start)
+                                        std::chrono::system_clock::now() - start).count()
                                 << std::flush;
                         usleep(500000);
                     }

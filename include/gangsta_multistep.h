@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <iostream>
+#include <iomanip>   // for std::setw
 #include <memory>
 #include <stack>
 

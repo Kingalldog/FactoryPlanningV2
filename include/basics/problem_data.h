@@ -1,6 +1,7 @@
 #pragma once
 #include <fstream>
 #include <string>
+#include <unordered_map>
 
 #include "basics/operation.h"
 #include "basics/tool.h"
@@ -19,7 +20,7 @@ public:
     std::vector<WorkPtr> works;
     std::vector<Operation> operations;
     std::vector<std::vector<Duration>> times_matrix;
-
+int count_operations = 0;
 private:
     void FillTools(std::ifstream& input);
     void FillOperations(std::ifstream& input);
@@ -28,3 +29,6 @@ private:
 
     Tool ParseTool(std::ifstream& input, size_t id);
 };
+
+
+ProblemData DeepCopy(const ProblemData& src) ;
